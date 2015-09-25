@@ -10,19 +10,8 @@ import (
 	"time"
 )
 
-const (
-	// From https://github.com/ClusterHQ/flocker-docker-plugin/blob/master/flockerdockerplugin/adapter.py#L18
-	defaultVolumeSize = json.Number("107374182400")
-
-	defaultControlServiceHost = "localhost"
-	defaultControlServicePort = 4523
-
-	// Flocker connections are authenticated with TLS
-	// TODO: It can perhaps be stored somewhere else.
-	defaultCACertFile     = "/etc/flocker/cluster.crt"
-	defaultClientKeyFile  = "/etc/flocker/apiuser.key"
-	defaultClientCertFile = "/etc/flocker/apiuser.crt"
-)
+// From https://github.com/ClusterHQ/flocker-docker-plugin/blob/master/flockerdockerplugin/adapter.py#L18
+const defaultVolumeSize = json.Number("107374182400")
 
 var (
 	// A volume can take a long time to be available, if we don't want
