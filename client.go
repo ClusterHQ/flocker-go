@@ -222,7 +222,7 @@ func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 	payload := configurationPayload{
 		Primary:     primary,
 		DatasetID:   datasetID,
-		MaximumSize: json.Number(defaultVolumeSize),
+		MaximumSize: json.Number(c.maximumSize),
 		Metadata: metadataPayload{
 			Name: dir,
 		},

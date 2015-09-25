@@ -299,10 +299,11 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 
 func newFlockerTestClient(host string, port int) *flockerClient {
 	return &flockerClient{
-		Client:  &http.Client{},
-		host:    host,
-		port:    port,
-		version: "v1",
-		schema:  "http",
+		Client:      &http.Client{},
+		host:        host,
+		port:        port,
+		version:     "v1",
+		schema:      "http",
+		maximumSize: defaultVolumeSize,
 	}
 }
