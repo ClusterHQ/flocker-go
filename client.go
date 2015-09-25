@@ -51,10 +51,7 @@ var (
 	errFlockerControlServicePort = errors.New("The volume config must have a key CONTROL_SERVICE_PORT defined in the OtherAttributes field")
 )
 
-/*
- * NewClient creates a wrapper over http.Client to communicate with the
- * flocker control service.
- */
+// NewClient creates a wrapper over http.Client to communicate with the flocker control service.
 func NewClient(host string, port int, caCertPath, keyPath, certPath string) (*flockerClient, error) {
 	client, err := newTLSClient(caCertPath, keyPath, certPath)
 	if err != nil {
@@ -213,18 +210,16 @@ func (c flockerClient) getDatasetState(datasetID string) (*datasetState, error) 
 	}, nil
 }
 
-/*
- * createVolume creates a volume in Flocker, waits for it to be ready and
- * returns the dataset id.
- *
- * This process is a little bit complex but follows this flow:
- *
- * 1) Find the Flocker Control Service UUID
- * 2) Try to create the dataset
- * 3) If it already exists just return
- * 4) If it didn't previously exist, wait for it to be ready
- */
-func (c flockerClient) createVolume(dir string) (datasetID string, err error) {
+// CreateVolume creates a volume in Flocker, waits for it to be ready and
+// returns the dataset id.
+
+// This process is a little bit complex but follows this flow:
+
+// 1. Find the Flocker Control Service UUID
+// 2. Try to create the dataset
+// 3. If it already exists just return
+// 4. If it didn't previously exist, wait for it to be ready
+func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
 	primary, err := c.findPrimaryUUID()

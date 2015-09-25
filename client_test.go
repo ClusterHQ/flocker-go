@@ -256,7 +256,7 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 	c.schema = "http"
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
-	datasetID, err := c.createVolume(expectedDatasetName)
+	datasetID, err := c.CreateVolume(expectedDatasetName)
 	assert.NoError(err)
 	assert.Equal(expectedDatasetID, datasetID)
 }
@@ -292,7 +292,7 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 	assert.NoError(err)
 	c.schema = "http"
 
-	datasetID, err := c.createVolume(expectedDatasetName)
+	datasetID, err := c.CreateVolume(expectedDatasetName)
 	assert.NoError(err)
 	assert.Equal(expectedDatasetID, datasetID)
 }
