@@ -22,6 +22,12 @@ var (
 
 	errStateNotFound         = errors.New("State not found by Dataset ID")
 	errConfigurationNotFound = errors.New("Configuration not found by Name")
+
+	errFlockerControlServiceHost = errors.New("The volume config must have a key CONTROL_SERVICE_HOST defined in the OtherAttributes field")
+	errFlockerControlServicePort = errors.New("The volume config must have a key CONTROL_SERVICE_PORT defined in the OtherAttributes field")
+
+	errVolumeAlreadyExists = errors.New("The volume already exists")
+	errVolumeDoesNotExist  = errors.New("The volume does not exist")
 )
 
 type flockerClient struct {
@@ -34,11 +40,6 @@ type flockerClient struct {
 
 	maximumSize json.Number
 }
-
-var (
-	errFlockerControlServiceHost = errors.New("The volume config must have a key CONTROL_SERVICE_HOST defined in the OtherAttributes field")
-	errFlockerControlServicePort = errors.New("The volume config must have a key CONTROL_SERVICE_PORT defined in the OtherAttributes field")
-)
 
 // NewClient creates a wrapper over http.Client to communicate with the flocker control service.
 func NewClient(host string, port int, caCertPath, keyPath, certPath string) (*flockerClient, error) {
@@ -58,12 +59,12 @@ func NewClient(host string, port int, caCertPath, keyPath, certPath string) (*fl
 }
 
 /*
- * request do a request using the http.Client embedded to the control service
- * and returns the response or an error in case it happens.
- *
- * Note: you will need to deal with the response body call to Close if you
- * don't want to deal with problems later.
- */
+request do a request using the http.Client embedded to the control service
+and returns the response or an error in case it happens.
+
+Note: you will need to deal with the response body call to Close if you
+don't want to deal with problems later.
+*/
 func (c flockerClient) request(method, url string, payload interface{}) (*http.Response, error) {
 	var (
 		b   []byte
@@ -199,16 +200,18 @@ func (c flockerClient) getDatasetState(datasetID string) (*datasetState, error) 
 	}, nil
 }
 
-// CreateVolume creates a volume in Flocker, waits for it to be ready and
-// returns the dataset id.
+/*
+CreateVolume creates a volume in Flocker, waits for it to be ready and
+returns the dataset id.
 
-// This process is a little bit complex but follows this flow:
+This process is a little bit complex but follows this flow:
 
-// 1. Find the Flocker Control Service UUID
-// 2. Try to create the dataset
-// 3. If it already exists just return
-// 4. If it didn't previously exist, wait for it to be ready
-func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
+1. Find the Flocker Control Service UUID
+2. Try to create the dataset
+3. If it already exists an error is returned
+4. If it didn't previously exist, wait for it to be ready
+*/
+func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
 	primary, err := c.findPrimaryUUID()
@@ -217,7 +220,7 @@ func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 	}
 
 	// 2) Try to create the dataset in the given Primary
-	datasetID = datasetIDFromName(dir)
+	datasetID := datasetIDFromName(dir)
 
 	payload := configurationPayload{
 		Primary:     primary,
@@ -232,11 +235,11 @@ func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 	if err != nil {
 		return "", err
 	}
-	resp.Body.Close() // StatusCode are enough
+	resp.Body.Close() // StatusCodes are enough
 
 	// 3) Return if the dataset was previously created
 	if resp.StatusCode == http.StatusConflict {
-		return datasetID, nil
+		return "", errVolumeAlreadyExists
 	}
 
 	if resp.StatusCode >= 300 {
@@ -249,8 +252,8 @@ func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 	tickChan := time.NewTicker(tickerWaitingForVolume).C
 
 	for {
-		if _, err := c.getDatasetState(datasetID); err == nil {
-			return datasetID, nil
+		if s, err := c.getDatasetState(datasetID); err == nil {
+			return s.Path, nil
 		} else if err != errStateNotFound {
 			return "", err
 		}
@@ -261,5 +264,22 @@ func (c flockerClient) CreateVolume(dir string) (datasetID string, err error) {
 		case <-tickChan:
 			break
 		}
+	}
+}
+
+func (c flockerClient) LookupVolume(dir string) (path string, err error) {
+	var s *datasetState
+
+	datasetID := datasetIDFromName(dir)
+
+	if s, err = c.getDatasetState(datasetID); err == nil {
+		return s.Path, err
+	}
+
+	switch err {
+	case errStateNotFound:
+		return "", errVolumeDoesNotExist
+	default:
+		return "", err
 	}
 }

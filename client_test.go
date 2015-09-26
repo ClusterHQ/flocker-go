@@ -154,7 +154,6 @@ func TestFindPrimaryUUID(t *testing.T) {
 
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
-	c.schema = "http"
 
 	mockedPrimary = expectedPrimary
 	primary, err := c.findPrimaryUUID()
@@ -211,6 +210,7 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 		expectedPrimary     = "A-B-C-D"
 	)
 	expectedDatasetID := datasetIDFromName(expectedDatasetName)
+	expectedPath := fmt.Sprintf("/flocker/%s", expectedDatasetID)
 
 	assert := assert.New(t)
 	var (
@@ -244,7 +244,7 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 		case 4:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "%s"}]`, expectedDatasetID, expectedDatasetName)))
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, expectedDatasetID, expectedDatasetID)))
 		}
 	}))
 
@@ -253,20 +253,19 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
-	c.schema = "http"
+
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
-	datasetID, err := c.CreateVolume(expectedDatasetName)
+	path, err := c.CreateVolume(expectedDatasetName)
 	assert.NoError(err)
-	assert.Equal(expectedDatasetID, datasetID)
+	assert.Equal(expectedPath, path)
 }
 
 func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 	const (
-		expectedPrimary     = "A-B-C-D"
-		expectedDatasetName = "dir"
+		DatasetName     = "dir"
+		expectedPrimary = "A-B-C-D"
 	)
-	expectedDatasetID := datasetIDFromName(expectedDatasetName)
 
 	assert := assert.New(t)
 	var numCalls int
@@ -290,11 +289,50 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
-	c.schema = "http"
 
-	datasetID, err := c.CreateVolume(expectedDatasetName)
+	_, err = c.CreateVolume(DatasetName)
+	assert.Equal(errVolumeAlreadyExists, err)
+}
+
+func TestLookupVolumeThatExists(t *testing.T) {
+	const dir = "dir"
+	datasetID := datasetIDFromName(dir)
+	expectedPath := fmt.Sprintf("/flocker/%s", datasetID)
+
+	assert := assert.New(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal("GET", r.Method)
+		assert.Equal("/v1/state/datasets", r.URL.Path)
+		w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, datasetID, datasetID)))
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
 	assert.NoError(err)
-	assert.Equal(expectedDatasetID, datasetID)
+
+	c := newFlockerTestClient(host, port)
+	assert.NoError(err)
+
+	path, err := c.LookupVolume(dir)
+	assert.NoError(err)
+	assert.Equal(expectedPath, path)
+}
+
+func TestLookupVolumeThatDoesNotExist(t *testing.T) {
+	assert := assert.New(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"dataset_id": "not-found", "path": "does-not-matter"}]`))
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+	assert.NoError(err)
+
+	_, err = c.LookupVolume("something")
+	assert.Equal(errVolumeDoesNotExist, err)
 }
 
 func newFlockerTestClient(host string, port int) *flockerClient {
