@@ -40,11 +40,13 @@ type flockerClient struct {
 	port    int
 	version string
 
+	clientIP string
+
 	maximumSize json.Number
 }
 
 // NewClient creates a wrapper over http.Client to communicate with the flocker control service.
-func NewClient(host string, port int, caCertPath, keyPath, certPath string) (*flockerClient, error) {
+func NewClient(host string, port int, clientIP string, caCertPath, keyPath, certPath string) (*flockerClient, error) {
 	client, err := newTLSClient(caCertPath, keyPath, certPath)
 	if err != nil {
 		return nil, err
@@ -57,6 +59,7 @@ func NewClient(host string, port int, caCertPath, keyPath, certPath string) (*fl
 		port:        port,
 		version:     "v1",
 		maximumSize: defaultVolumeSize,
+		clientIP:    clientIP,
 	}, nil
 }
 
@@ -159,7 +162,7 @@ func (c flockerClient) LookupPrimaryUUID() (uuid string, err error) {
 	var states []nodeStatePayload
 	if err = json.NewDecoder(resp.Body).Decode(&states); err == nil {
 		for _, s := range states {
-			if s.Host == c.host {
+			if s.Host == c.clientIP {
 				return s.UUID, nil
 			}
 		}

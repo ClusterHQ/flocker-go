@@ -130,7 +130,7 @@ func TestFindPrimaryUUID(t *testing.T) {
 	assert.NoError(err)
 	assert.Equal(expectedPrimary, primary)
 
-	mockedHost = "not.found"
+	c.clientIP = "not.found"
 	_, err = c.LookupPrimaryUUID()
 	assert.Equal(errStateNotFound, err)
 }
@@ -344,5 +344,6 @@ func newFlockerTestClient(host string, port int) *flockerClient {
 		version:     "v1",
 		schema:      "http",
 		maximumSize: defaultVolumeSize,
+		clientIP:    "127.0.0.1",
 	}
 }
