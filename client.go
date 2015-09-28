@@ -147,9 +147,9 @@ func (c flockerClient) findIDInConfigurationsPayload(body io.ReadCloser, name st
 	return "", err
 }
 
-// findPrimaryUUID returns the UUID of the primary Flocker Control Service for
+// LookupPrimaryUUID returns the UUID of the primary Flocker Control Service for
 // the given host.
-func (c flockerClient) findPrimaryUUID() (uuid string, err error) {
+func (c flockerClient) LookupPrimaryUUID() (uuid string, err error) {
 	resp, err := c.get(c.getURL("state/nodes"))
 	if err != nil {
 		return "", err
@@ -204,7 +204,7 @@ This process is a little bit complex but follows this flow:
 func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
-	primary, err := c.findPrimaryUUID()
+	primary, err := c.LookupPrimaryUUID()
 	if err != nil {
 		return "", err
 	}

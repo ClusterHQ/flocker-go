@@ -126,12 +126,12 @@ func TestFindPrimaryUUID(t *testing.T) {
 	assert.NoError(err)
 
 	mockedPrimary = expectedPrimary
-	primary, err := c.findPrimaryUUID()
+	primary, err := c.LookupPrimaryUUID()
 	assert.NoError(err)
 	assert.Equal(expectedPrimary, primary)
 
 	mockedHost = "not.found"
-	_, err = c.findPrimaryUUID()
+	_, err = c.LookupPrimaryUUID()
 	assert.Equal(errStateNotFound, err)
 }
 
