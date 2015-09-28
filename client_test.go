@@ -335,6 +335,36 @@ func TestLookupVolumeThatDoesNotExist(t *testing.T) {
 	assert.Equal(errVolumeDoesNotExist, err)
 }
 
+func TestUpdateDatasetPrimary(t *testing.T) {
+	const (
+		dir             = "dir"
+		expectedPrimary = "the-new-primary"
+	)
+	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", datasetIDFromName(dir))
+
+	assert := assert.New(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal("POST", r.Method)
+		assert.Equal(expectedURL, r.URL.Path)
+
+		var c configurationPayload
+		err := json.NewDecoder(r.Body).Decode(&c)
+		assert.NoError(err)
+
+		assert.Equal(expectedPrimary, c.Primary)
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+	assert.NoError(err)
+
+	err = c.UpdateDatasetPrimary(dir, expectedPrimary)
+	assert.NoError(err)
+}
+
 func newFlockerTestClient(host string, port int) *flockerClient {
 	return &flockerClient{
 		Client:      &http.Client{},

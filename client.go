@@ -28,6 +28,8 @@ var (
 
 	errVolumeAlreadyExists = errors.New("The volume already exists")
 	errVolumeDoesNotExist  = errors.New("The volume does not exist")
+
+	errUpdatingDataset = errors.New("It was impossible to update the dataset")
 )
 
 type flockerClient struct {
@@ -282,4 +284,24 @@ func (c flockerClient) LookupVolume(dir string) (path string, err error) {
 	default:
 		return "", err
 	}
+}
+
+func (c flockerClient) UpdateDatasetPrimary(dir, newPrimary string) error {
+	datasetID := datasetIDFromName(dir)
+
+	payload := configurationPayload{
+		Primary: newPrimary,
+	}
+
+	url := c.getURL(fmt.Sprintf("configuration/datasets/%s", datasetID))
+	resp, err := c.post(url, payload)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return errUpdatingDataset
+	}
+	return nil
 }
