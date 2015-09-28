@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -213,14 +214,8 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	}
 
 	// 2) Try to create the dataset in the given Primary
-	datasetID, err := c.QueryDatasetIDFromName(dir)
-	if err != nil {
-		return "", err
-	}
-
 	payload := configurationPayload{
 		Primary:     primary,
-		DatasetID:   datasetID,
 		MaximumSize: json.Number(c.maximumSize),
 		Metadata: metadataPayload{
 			Name: dir,
@@ -231,7 +226,7 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	if err != nil {
 		return "", err
 	}
-	resp.Body.Close() // StatusCodes are enough
+	defer resp.Body.Close()
 
 	// 3) Return if the dataset was previously created
 	if resp.StatusCode == http.StatusConflict {
@@ -242,15 +237,21 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 		return "", fmt.Errorf("Expected: {1,2}xx creating the volume, got: %d", resp.StatusCode)
 	}
 
+	var p configurationPayload
+	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
+		return "", err
+	}
+
 	// 4) Wait until the dataset is ready for usage. In case it never gets
 	// ready there is a timeoutChan that will return an error
 	timeoutChan := time.NewTimer(timeoutWaitingForVolume).C
 	tickChan := time.NewTicker(tickerWaitingForVolume).C
 
 	for {
-		if s, err := c.GetDatasetState(datasetID); err == nil {
+		if s, err := c.GetDatasetState(p.DatasetID); err == nil {
 			return s.Path, nil
 		} else if err != errStateNotFound {
+			log.Println(3)
 			return "", err
 		}
 

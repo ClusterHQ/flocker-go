@@ -196,10 +196,6 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 			assert.Equal("/v1/state/nodes", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
 		case 2:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/configuration/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, expectedDatasetID, expectedDatasetName)))
-		case 3:
 			assert.Equal("POST", r.Method)
 			assert.Equal("/v1/configuration/datasets", r.URL.Path)
 
@@ -209,14 +205,13 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 			assert.Equal(expectedPrimary, c.Primary)
 			assert.Equal(defaultVolumeSize, c.MaximumSize)
 			assert.Equal(expectedDatasetName, c.Metadata.Name)
-			assert.Equal(expectedDatasetID, c.DatasetID)
 
 			w.Write([]byte(fmt.Sprintf(`{"dataset_id": "%s"}`, expectedDatasetID)))
-		case 4:
+		case 3:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
 			w.Write([]byte(`[]`))
-		case 5:
+		case 4:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, expectedDatasetID, expectedDatasetID)))
@@ -253,10 +248,6 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 			assert.Equal("/v1/state/nodes", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
 		case 2:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/configuration/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "does-not-matter", "metadata": {"name": "%s"}}]`, DatasetName)))
-		case 3:
 			assert.Equal("POST", r.Method)
 			assert.Equal("/v1/configuration/datasets", r.URL.Path)
 			w.WriteHeader(http.StatusConflict)
