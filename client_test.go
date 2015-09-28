@@ -178,8 +178,8 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 	const (
 		expectedDatasetName = "dir"
 		expectedPrimary     = "A-B-C-D"
+		expectedDatasetID   = "datasetID"
 	)
-	expectedDatasetID := datasetIDFromName(expectedDatasetName)
 	expectedPath := fmt.Sprintf("/flocker/%s", expectedDatasetID)
 
 	assert := assert.New(t)
@@ -196,6 +196,10 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 			assert.Equal("/v1/state/nodes", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
 		case 2:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, expectedDatasetID, expectedDatasetName)))
+		case 3:
 			assert.Equal("POST", r.Method)
 			assert.Equal("/v1/configuration/datasets", r.URL.Path)
 
@@ -208,11 +212,11 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 			assert.Equal(expectedDatasetID, c.DatasetID)
 
 			w.Write([]byte(fmt.Sprintf(`{"dataset_id": "%s"}`, expectedDatasetID)))
-		case 3:
+		case 4:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
 			w.Write([]byte(`[]`))
-		case 4:
+		case 5:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, expectedDatasetID, expectedDatasetID)))
@@ -249,6 +253,10 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 			assert.Equal("/v1/state/nodes", r.URL.Path)
 			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
 		case 2:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "does-not-matter", "metadata": {"name": "%s"}}]`, DatasetName)))
+		case 3:
 			assert.Equal("POST", r.Method)
 			assert.Equal("/v1/configuration/datasets", r.URL.Path)
 			w.WriteHeader(http.StatusConflict)
@@ -266,16 +274,27 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 }
 
 func TestLookupVolumeThatExists(t *testing.T) {
-	const dir = "dir"
-	datasetID := datasetIDFromName(dir)
+	const (
+		dir       = "dir"
+		datasetID = "datasetID"
+	)
 	expectedPath := fmt.Sprintf("/flocker/%s", datasetID)
 
 	assert := assert.New(t)
+	var numCalls int
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal("GET", r.Method)
-		assert.Equal("/v1/state/datasets", r.URL.Path)
-		w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, datasetID, datasetID)))
+		numCalls++
+		switch numCalls {
+		case 1:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, datasetID, dir)))
+		case 2:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/state/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, datasetID, datasetID)))
+		}
 	}))
 
 	host, port, err := getHostAndPortFromTestServer(ts)
@@ -290,10 +309,21 @@ func TestLookupVolumeThatExists(t *testing.T) {
 }
 
 func TestLookupVolumeThatDoesNotExist(t *testing.T) {
+	const dir = "dir"
+
 	assert := assert.New(t)
+	var numCalls int
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"dataset_id": "not-found", "path": "does-not-matter"}]`))
+		numCalls++
+		switch numCalls {
+		case 1:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "something", "metadata": {"name": "%s"}}]`, dir)))
+		case 2:
+			w.Write([]byte(`[{"dataset_id": "not-found", "path": "does-not-matter"}]`))
+		}
 	}))
 
 	host, port, err := getHostAndPortFromTestServer(ts)
@@ -302,28 +332,38 @@ func TestLookupVolumeThatDoesNotExist(t *testing.T) {
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
 
-	_, err = c.LookupVolume("something")
+	_, err = c.LookupVolume(dir)
 	assert.Equal(errVolumeDoesNotExist, err)
 }
 
 func TestUpdateDatasetPrimary(t *testing.T) {
 	const (
-		dir             = "dir"
-		expectedPrimary = "the-new-primary"
+		dir               = "dir"
+		expectedPrimary   = "the-new-primary"
+		expectedDatasetID = "datasetID"
 	)
-	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", datasetIDFromName(dir))
+	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", expectedDatasetID)
 
 	assert := assert.New(t)
+	var numCalls int
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal("POST", r.Method)
-		assert.Equal(expectedURL, r.URL.Path)
+		numCalls++
+		switch numCalls {
+		case 1:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, expectedDatasetID, dir)))
+		case 2:
+			assert.Equal("POST", r.Method)
+			assert.Equal(expectedURL, r.URL.Path)
 
-		var c configurationPayload
-		err := json.NewDecoder(r.Body).Decode(&c)
-		assert.NoError(err)
+			var c configurationPayload
+			err := json.NewDecoder(r.Body).Decode(&c)
+			assert.NoError(err)
 
-		assert.Equal(expectedPrimary, c.Primary)
+			assert.Equal(expectedPrimary, c.Primary)
+		}
 	}))
 
 	host, port, err := getHostAndPortFromTestServer(ts)

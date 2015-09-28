@@ -213,7 +213,10 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	}
 
 	// 2) Try to create the dataset in the given Primary
-	datasetID := datasetIDFromName(dir)
+	datasetID, err := c.QueryDatasetIDFromName(dir)
+	if err != nil {
+		return "", err
+	}
 
 	payload := configurationPayload{
 		Primary:     primary,
@@ -263,7 +266,10 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 func (c flockerClient) LookupVolume(dir string) (path string, err error) {
 	var s *datasetState
 
-	datasetID := datasetIDFromName(dir)
+	datasetID, err := c.QueryDatasetIDFromName(dir)
+	if err != nil {
+		return "", err
+	}
 
 	if s, err = c.GetDatasetState(datasetID); err == nil {
 		return s.Path, err
@@ -278,7 +284,10 @@ func (c flockerClient) LookupVolume(dir string) (path string, err error) {
 }
 
 func (c flockerClient) UpdateDatasetPrimary(dir, newPrimary string) error {
-	datasetID := datasetIDFromName(dir)
+	datasetID, err := c.QueryDatasetIDFromName(dir)
+	if err != nil {
+		return err
+	}
 
 	payload := configurationPayload{
 		Primary: newPrimary,
@@ -295,4 +304,24 @@ func (c flockerClient) UpdateDatasetPrimary(dir, newPrimary string) error {
 		return errUpdatingDataset
 	}
 	return nil
+}
+
+// QueryDatasetIDFromName will return a UUID string for the input value.
+func (c flockerClient) QueryDatasetIDFromName(v string) (datasteID string, err error) {
+	resp, err := c.get(c.getURL("configuration/datasets"))
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var configurations []configurationPayload
+	if err = json.NewDecoder(resp.Body).Decode(&configurations); err == nil {
+		for _, c := range configurations {
+			if c.Metadata.Name == v {
+				return c.DatasetID, nil
+			}
+		}
+		return "", errConfigurationNotFound
+	}
+	return "", err
 }
