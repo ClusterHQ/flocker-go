@@ -47,7 +47,7 @@ func TestPost(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := flockerClient{Client: &http.Client{}}
+	c := Client{Client: &http.Client{}}
 
 	resp, err := c.post(ts.URL, payload{expectedPayload})
 	assert.NoError(err)
@@ -66,7 +66,7 @@ func TestGet(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := flockerClient{Client: &http.Client{}}
+	c := Client{Client: &http.Client{}}
 
 	resp, err := c.get(ts.URL)
 	assert.NoError(err)
@@ -80,7 +80,7 @@ func TestFindIDInConfigurationsPayload(t *testing.T) {
 	)
 	assert := assert.New(t)
 
-	c := flockerClient{}
+	c := Client{}
 
 	payload := fmt.Sprintf(
 		`[{"dataset_id": "1-2-3", "metadata": {"name": "test"}}, {"dataset_id": "The-42-id", "metadata": {"name": "%s"}}]`,
@@ -367,8 +367,8 @@ func TestUpdateDatasetPrimary(t *testing.T) {
 	assert.NoError(err)
 }
 
-func newFlockerTestClient(host string, port int) *flockerClient {
-	return &flockerClient{
+func newFlockerTestClient(host string, port int) *Client {
+	return &Client{
 		Client:      &http.Client{},
 		host:        host,
 		port:        port,

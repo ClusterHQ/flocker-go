@@ -33,7 +33,7 @@ var (
 	errUpdatingDataset = errors.New("It was impossible to update the dataset")
 )
 
-type flockerClient struct {
+type Client struct {
 	*http.Client
 
 	schema  string
@@ -47,13 +47,13 @@ type flockerClient struct {
 }
 
 // NewClient creates a wrapper over http.Client to communicate with the flocker control service.
-func NewClient(host string, port int, clientIP string, caCertPath, keyPath, certPath string) (*flockerClient, error) {
+func NewClient(host string, port int, clientIP string, caCertPath, keyPath, certPath string) (*Client, error) {
 	client, err := newTLSClient(caCertPath, keyPath, certPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return &flockerClient{
+	return &Client{
 		Client:      client,
 		schema:      "https",
 		host:        host,
@@ -71,7 +71,7 @@ and returns the response or an error in case it happens.
 Note: you will need to deal with the response body call to Close if you
 don't want to deal with problems later.
 */
-func (c flockerClient) request(method, url string, payload interface{}) (*http.Response, error) {
+func (c Client) request(method, url string, payload interface{}) (*http.Response, error) {
 	var (
 		b   []byte
 		err error
@@ -95,17 +95,17 @@ func (c flockerClient) request(method, url string, payload interface{}) (*http.R
 }
 
 // post performs a post request with the indicated payload
-func (c flockerClient) post(url string, payload interface{}) (*http.Response, error) {
+func (c Client) post(url string, payload interface{}) (*http.Response, error) {
 	return c.request("POST", url, payload)
 }
 
 // get performs a get request
-func (c flockerClient) get(url string) (*http.Response, error) {
+func (c Client) get(url string) (*http.Response, error) {
 	return c.request("GET", url, nil)
 }
 
 // getURL returns a full URI to the control service
-func (c flockerClient) getURL(path string) string {
+func (c Client) getURL(path string) string {
 	return fmt.Sprintf("%s://%s:%d/%s/%s", c.schema, c.host, c.port, c.version, path)
 }
 
@@ -138,7 +138,7 @@ type nodeStatePayload struct {
 
 // findIDInConfigurationsPayload returns the datasetID if it was found in the
 // configurations payload, otherwise it will return an error.
-func (c flockerClient) findIDInConfigurationsPayload(body io.ReadCloser, name string) (datasetID string, err error) {
+func (c Client) findIDInConfigurationsPayload(body io.ReadCloser, name string) (datasetID string, err error) {
 	var configurations []configurationPayload
 	if err = json.NewDecoder(body).Decode(&configurations); err == nil {
 		for _, r := range configurations {
@@ -153,7 +153,7 @@ func (c flockerClient) findIDInConfigurationsPayload(body io.ReadCloser, name st
 
 // LookupPrimaryUUID returns the UUID of the primary Flocker Control Service for
 // the given host.
-func (c flockerClient) LookupPrimaryUUID() (uuid string, err error) {
+func (c Client) LookupPrimaryUUID() (uuid string, err error) {
 	resp, err := c.get(c.getURL("state/nodes"))
 	if err != nil {
 		return "", err
@@ -174,7 +174,7 @@ func (c flockerClient) LookupPrimaryUUID() (uuid string, err error) {
 
 // GetDatasetState performs a get request to get the state of the given datasetID, if
 // something goes wrong or the datasetID was not found it returns an error.
-func (c flockerClient) GetDatasetState(datasetID string) (*datasetState, error) {
+func (c Client) GetDatasetState(datasetID string) (*datasetState, error) {
 	resp, err := c.get(c.getURL("state/datasets"))
 	if err != nil {
 		return nil, err
@@ -205,7 +205,7 @@ This process is a little bit complex but follows this flow:
 3. If it already exists an error is returned
 4. If it didn't previously exist, wait for it to be ready
 */
-func (c flockerClient) CreateVolume(dir string) (path string, err error) {
+func (c Client) CreateVolume(dir string) (path string, err error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
 	primary, err := c.LookupPrimaryUUID()
@@ -264,7 +264,7 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	}
 }
 
-func (c flockerClient) LookupVolume(dir string) (path string, err error) {
+func (c Client) LookupVolume(dir string) (path string, err error) {
 	var s *datasetState
 
 	datasetID, err := c.QueryDatasetIDFromName(dir)
@@ -284,7 +284,7 @@ func (c flockerClient) LookupVolume(dir string) (path string, err error) {
 	}
 }
 
-func (c flockerClient) UpdateDatasetPrimary(dir, newPrimary string) error {
+func (c Client) UpdateDatasetPrimary(dir, newPrimary string) error {
 	datasetID, err := c.QueryDatasetIDFromName(dir)
 	if err != nil {
 		return err
@@ -308,7 +308,7 @@ func (c flockerClient) UpdateDatasetPrimary(dir, newPrimary string) error {
 }
 
 // QueryDatasetIDFromName will return a UUID string for the input value.
-func (c flockerClient) QueryDatasetIDFromName(v string) (datasteID string, err error) {
+func (c Client) QueryDatasetIDFromName(v string) (datasteID string, err error) {
 	resp, err := c.get(c.getURL("configuration/datasets"))
 	if err != nil {
 		return "", err
