@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 )
@@ -259,7 +258,6 @@ func (c Client) CreateVolume(dir string) (path string, err error) {
 		if s, err := c.GetDatasetState(p.DatasetID); err == nil {
 			return s.Path, nil
 		} else if err != errStateNotFound {
-			log.Println(3)
 			return "", err
 		}
 
