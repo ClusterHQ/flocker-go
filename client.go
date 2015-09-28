@@ -292,7 +292,7 @@ func (c Client) LookupVolume(dir string) (path string, err error) {
 
 func (c Client) UpdateDatasetPrimary(datasetID, newPrimary string) error {
 	payload := struct {
-		Primary string
+		Primary string `json:"primary"`
 	}{
 		Primary: newPrimary,
 	}
