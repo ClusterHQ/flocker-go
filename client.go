@@ -117,8 +117,10 @@ type metadataPayload struct {
 }
 
 type datasetState struct {
-	Path      string `json:"path"`
-	DatasetID string `json:"dataset_id"`
+	Path        string      `json:"path"`
+	DatasetID   string      `json:"dataset_id"`
+	Primary     string      `json:"primary,omitempty"`
+	MaximumSize json.Number `json:"maximum_size,omitempty"`
 }
 
 type datasetStatePayload struct {
@@ -166,40 +168,26 @@ func (c flockerClient) findPrimaryUUID() (uuid string, err error) {
 	return "", err
 }
 
-// findPathInDatasetStatePayload returns the path of the given datasetID if it
-// was found in the state payload. In case the path is not found it returns an
-// error.
-func (c flockerClient) findPathInDatasetStatePayload(body io.ReadCloser, datasetID string) (path string, err error) {
-	var states []datasetStatePayload
-	if err = json.NewDecoder(body).Decode(&states); err == nil {
-		for _, s := range states {
-			if s.DatasetID == datasetID {
-				return s.Path, nil
-			}
-		}
-		return "", errStateNotFound
-	}
-	return "", err
-}
-
-// getDatasetState performs a get request to get the state of the given datasetID, if
+// GetDatasetState performs a get request to get the state of the given datasetID, if
 // something goes wrong or the datasetID was not found it returns an error.
-func (c flockerClient) getDatasetState(datasetID string) (*datasetState, error) {
+func (c flockerClient) GetDatasetState(datasetID string) (*datasetState, error) {
 	resp, err := c.get(c.getURL("state/datasets"))
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	path, err := c.findPathInDatasetStatePayload(resp.Body, datasetID)
-	if err != nil {
+	var states []datasetStatePayload
+	if err = json.NewDecoder(resp.Body).Decode(&states); err == nil {
+		for _, s := range states {
+			if s.DatasetID == datasetID {
+				return s.datasetState, nil
+			}
+		}
 		return nil, errStateNotFound
 	}
 
-	return &datasetState{
-		DatasetID: datasetID,
-		Path:      path,
-	}, nil
+	return nil, err
 }
 
 /*
@@ -254,7 +242,7 @@ func (c flockerClient) CreateVolume(dir string) (path string, err error) {
 	tickChan := time.NewTicker(tickerWaitingForVolume).C
 
 	for {
-		if s, err := c.getDatasetState(datasetID); err == nil {
+		if s, err := c.GetDatasetState(datasetID); err == nil {
 			return s.Path, nil
 		} else if err != errStateNotFound {
 			return "", err
@@ -274,7 +262,7 @@ func (c flockerClient) LookupVolume(dir string) (path string, err error) {
 
 	datasetID := datasetIDFromName(dir)
 
-	if s, err = c.getDatasetState(datasetID); err == nil {
+	if s, err = c.GetDatasetState(datasetID); err == nil {
 		return s.Path, err
 	}
 

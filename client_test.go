@@ -104,36 +104,6 @@ func TestFindIDInConfigurationsPayload(t *testing.T) {
 	assert.Error(err)
 }
 
-func TestFindPathInDatasetStatePayload(t *testing.T) {
-	const (
-		searchedID = "search-for-this-dataset-id"
-		expected   = "awesome-path"
-	)
-	assert := assert.New(t)
-
-	c := flockerClient{}
-
-	payload := fmt.Sprintf(
-		`[{"dataset_id": "1-2-3", "path": "not-this-one"}, {"dataset_id": "%s", "path": "awesome-path"}]`,
-		searchedID,
-	)
-	path, err := c.findPathInDatasetStatePayload(
-		ioutil.NopCloser(bytes.NewBufferString(payload)), searchedID,
-	)
-	assert.NoError(err)
-	assert.Equal(expected, path)
-
-	path, err = c.findPathInDatasetStatePayload(
-		ioutil.NopCloser(bytes.NewBufferString(payload)), "this is not going to be there",
-	)
-	assert.Equal(errStateNotFound, err)
-
-	path, err = c.findPathInDatasetStatePayload(
-		ioutil.NopCloser(bytes.NewBufferString("not even } json")), "",
-	)
-	assert.Error(err)
-}
-
 func TestFindPrimaryUUID(t *testing.T) {
 	const expectedPrimary = "primary-uuid"
 	assert := assert.New(t)
@@ -241,6 +211,7 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 		case 3:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
+			w.Write([]byte(`[]`))
 		case 4:
 			assert.Equal("GET", r.Method)
 			assert.Equal("/v1/state/datasets", r.URL.Path)
