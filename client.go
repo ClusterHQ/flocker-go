@@ -33,6 +33,14 @@ var (
 	errUpdatingDataset = errors.New("It was impossible to update the dataset")
 )
 
+type Clientable interface {
+	CreateVolume(string) (string, error)
+	GetDatasetState(string) *datasetState
+	LookupPrimaryUUID() (string, error)
+	QueryDatasetIDFromName(string) (string, error)
+	UpdateDatasetPrimary(string, string) error
+}
+
 type Client struct {
 	*http.Client
 
@@ -284,12 +292,7 @@ func (c Client) LookupVolume(dir string) (path string, err error) {
 	}
 }
 
-func (c Client) UpdateDatasetPrimary(dir, newPrimary string) error {
-	datasetID, err := c.QueryDatasetIDFromName(dir)
-	if err != nil {
-		return err
-	}
-
+func (c Client) UpdateDatasetPrimary(datasetID, newPrimary string) error {
 	payload := configurationPayload{
 		Primary: newPrimary,
 	}
@@ -301,7 +304,7 @@ func (c Client) UpdateDatasetPrimary(dir, newPrimary string) error {
 	}
 	resp.Body.Close()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if resp.StatusCode >= 300 {
 		return errUpdatingDataset
 	}
 	return nil

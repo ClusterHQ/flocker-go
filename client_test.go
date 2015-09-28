@@ -329,32 +329,23 @@ func TestLookupVolumeThatDoesNotExist(t *testing.T) {
 
 func TestUpdateDatasetPrimary(t *testing.T) {
 	const (
-		dir               = "dir"
-		expectedPrimary   = "the-new-primary"
-		expectedDatasetID = "datasetID"
+		dir             = "dir"
+		expectedPrimary = "the-new-primary"
+		datasetID       = "datasetID"
 	)
-	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", expectedDatasetID)
+	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", datasetID)
 
 	assert := assert.New(t)
-	var numCalls int
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		numCalls++
-		switch numCalls {
-		case 1:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/configuration/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, expectedDatasetID, dir)))
-		case 2:
-			assert.Equal("POST", r.Method)
-			assert.Equal(expectedURL, r.URL.Path)
+		assert.Equal("POST", r.Method)
+		assert.Equal(expectedURL, r.URL.Path)
 
-			var c configurationPayload
-			err := json.NewDecoder(r.Body).Decode(&c)
-			assert.NoError(err)
+		var c configurationPayload
+		err := json.NewDecoder(r.Body).Decode(&c)
+		assert.NoError(err)
 
-			assert.Equal(expectedPrimary, c.Primary)
-		}
+		assert.Equal(expectedPrimary, c.Primary)
 	}))
 
 	host, port, err := getHostAndPortFromTestServer(ts)
@@ -363,7 +354,7 @@ func TestUpdateDatasetPrimary(t *testing.T) {
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
 
-	err = c.UpdateDatasetPrimary(dir, expectedPrimary)
+	err = c.UpdateDatasetPrimary(datasetID, expectedPrimary)
 	assert.NoError(err)
 }
 
