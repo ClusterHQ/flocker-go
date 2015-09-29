@@ -34,7 +34,7 @@ var (
 
 type Clientable interface {
 	CreateVolume(string) (string, error)
-	GetDatasetState(string) *datasetState
+	GetDatasetState(string) (*datasetState, error)
 	LookupPrimaryUUID() (string, error)
 	QueryDatasetIDFromName(string) (string, error)
 	UpdateDatasetPrimary(string, string) error
