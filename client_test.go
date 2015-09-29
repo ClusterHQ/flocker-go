@@ -126,12 +126,12 @@ func TestFindPrimaryUUID(t *testing.T) {
 	assert.NoError(err)
 
 	mockedPrimary = expectedPrimary
-	primary, err := c.LookupPrimaryUUID()
+	primary, err := c.GetPrimaryUUID()
 	assert.NoError(err)
 	assert.Equal(expectedPrimary, primary)
 
 	c.clientIP = "not.found"
-	_, err = c.LookupPrimaryUUID()
+	_, err = c.GetPrimaryUUID()
 	assert.Equal(errStateNotFound, err)
 }
 
@@ -174,7 +174,7 @@ func getVolumeConfig(host string, port int) volume.VolumeConfig {
 	}
 }
 
-func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
+func TestHappyPathCreateDatasetFromNonExistent(t *testing.T) {
 	const (
 		expectedDatasetName = "dir"
 		expectedPrimary     = "A-B-C-D"
@@ -226,14 +226,14 @@ func TestHappyPathCreateVolumeFromNonExistent(t *testing.T) {
 
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
-	path, err := c.CreateVolume(expectedDatasetName)
+	s, err := c.CreateDataset(expectedDatasetName)
 	assert.NoError(err)
-	assert.Equal(expectedPath, path)
+	assert.Equal(expectedPath, s.Path)
 }
 
-func TestCreateVolumeThatAlreadyExists(t *testing.T) {
+func TestCreateDatasetThatAlreadyExists(t *testing.T) {
 	const (
-		DatasetName     = "dir"
+		datasetName     = "dir"
 		expectedPrimary = "A-B-C-D"
 	)
 
@@ -260,80 +260,17 @@ func TestCreateVolumeThatAlreadyExists(t *testing.T) {
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
 
-	_, err = c.CreateVolume(DatasetName)
+	_, err = c.CreateDataset(datasetName)
 	assert.Equal(errVolumeAlreadyExists, err)
 }
 
-func TestLookupVolumeThatExists(t *testing.T) {
+func TestUpdatePrimaryForDataset(t *testing.T) {
 	const (
-		dir       = "dir"
-		datasetID = "datasetID"
+		dir               = "dir"
+		expectedPrimary   = "the-new-primary"
+		expectedDatasetID = "datasetID"
 	)
-	expectedPath := fmt.Sprintf("/flocker/%s", datasetID)
-
-	assert := assert.New(t)
-	var numCalls int
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		numCalls++
-		switch numCalls {
-		case 1:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/configuration/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "metadata": {"name": "%s"}}]`, datasetID, dir)))
-		case 2:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/state/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "%s", "path": "/flocker/%s"}]`, datasetID, datasetID)))
-		}
-	}))
-
-	host, port, err := getHostAndPortFromTestServer(ts)
-	assert.NoError(err)
-
-	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
-
-	path, err := c.LookupVolume(dir)
-	assert.NoError(err)
-	assert.Equal(expectedPath, path)
-}
-
-func TestLookupVolumeThatDoesNotExist(t *testing.T) {
-	const dir = "dir"
-
-	assert := assert.New(t)
-	var numCalls int
-
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		numCalls++
-		switch numCalls {
-		case 1:
-			assert.Equal("GET", r.Method)
-			assert.Equal("/v1/configuration/datasets", r.URL.Path)
-			w.Write([]byte(fmt.Sprintf(`[{"dataset_id": "something", "metadata": {"name": "%s"}}]`, dir)))
-		case 2:
-			w.Write([]byte(`[{"dataset_id": "not-found", "path": "does-not-matter"}]`))
-		}
-	}))
-
-	host, port, err := getHostAndPortFromTestServer(ts)
-	assert.NoError(err)
-
-	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
-
-	_, err = c.LookupVolume(dir)
-	assert.Equal(errVolumeDoesNotExist, err)
-}
-
-func TestUpdateDatasetPrimary(t *testing.T) {
-	const (
-		dir             = "dir"
-		expectedPrimary = "the-new-primary"
-		datasetID       = "datasetID"
-	)
-	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", datasetID)
+	expectedURL := fmt.Sprintf("/v1/configuration/datasets/%s", expectedDatasetID)
 
 	assert := assert.New(t)
 
@@ -346,6 +283,8 @@ func TestUpdateDatasetPrimary(t *testing.T) {
 		assert.NoError(err)
 
 		assert.Equal(expectedPrimary, c.Primary)
+
+		w.Write([]byte(fmt.Sprintf(`{"dataset_id": "%s", "path": "just-to-double-check"}`, expectedDatasetID)))
 	}))
 
 	host, port, err := getHostAndPortFromTestServer(ts)
@@ -354,8 +293,14 @@ func TestUpdateDatasetPrimary(t *testing.T) {
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
 
-	err = c.UpdateDatasetPrimary(datasetID, expectedPrimary)
+	s, err := c.UpdatePrimaryForDataset(expectedPrimary, expectedDatasetID)
 	assert.NoError(err)
+	assert.Equal(expectedDatasetID, s.DatasetID)
+	assert.NotEqual("", s.Path)
+}
+
+func TestInterfaceIsImplemented(t *testing.T) {
+	assert.Implements(t, (*Clientable)(nil), Client{})
 }
 
 func newFlockerTestClient(host string, port int) *Client {

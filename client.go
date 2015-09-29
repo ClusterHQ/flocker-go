@@ -32,14 +32,18 @@ var (
 	errUpdatingDataset = errors.New("It was impossible to update the dataset")
 )
 
+// Clientable exposes the needed methods to implement your own Flocker Client.
 type Clientable interface {
-	CreateVolume(string) (string, error)
-	GetDatasetState(string) (*datasetState, error)
-	LookupPrimaryUUID() (string, error)
-	QueryDatasetIDFromName(string) (string, error)
-	UpdateDatasetPrimary(string, string) error
+	CreateDataset(metaName string) (*DatasetState, error)
+
+	GetDatasetState(datasetID string) (*DatasetState, error)
+	GetDatasetID(metaName string) (datasetID string, err error)
+	GetPrimaryUUID() (primaryUUID string, err error)
+
+	UpdatePrimaryForDataset(primaryUUID, datasetID string) (*DatasetState, error)
 }
 
+// Client is a default Flocker Client.
 type Client struct {
 	*http.Client
 
@@ -127,7 +131,7 @@ type metadataPayload struct {
 	Name string `json:"name,omitempty"`
 }
 
-type datasetState struct {
+type DatasetState struct {
 	Path        string      `json:"path"`
 	DatasetID   string      `json:"dataset_id"`
 	Primary     string      `json:"primary,omitempty"`
@@ -135,7 +139,7 @@ type datasetState struct {
 }
 
 type datasetStatePayload struct {
-	*datasetState
+	*DatasetState
 }
 
 type nodeStatePayload struct {
@@ -158,9 +162,9 @@ func (c Client) findIDInConfigurationsPayload(body io.ReadCloser, name string) (
 	return "", err
 }
 
-// LookupPrimaryUUID returns the UUID of the primary Flocker Control Service for
+// GetPrimaryUUID returns the UUID of the primary Flocker Control Service for
 // the given host.
-func (c Client) LookupPrimaryUUID() (uuid string, err error) {
+func (c Client) GetPrimaryUUID() (uuid string, err error) {
 	resp, err := c.get(c.getURL("state/nodes"))
 	if err != nil {
 		return "", err
@@ -181,7 +185,7 @@ func (c Client) LookupPrimaryUUID() (uuid string, err error) {
 
 // GetDatasetState performs a get request to get the state of the given datasetID, if
 // something goes wrong or the datasetID was not found it returns an error.
-func (c Client) GetDatasetState(datasetID string) (*datasetState, error) {
+func (c Client) GetDatasetState(datasetID string) (*DatasetState, error) {
 	resp, err := c.get(c.getURL("state/datasets"))
 	if err != nil {
 		return nil, err
@@ -192,7 +196,7 @@ func (c Client) GetDatasetState(datasetID string) (*datasetState, error) {
 	if err = json.NewDecoder(resp.Body).Decode(&states); err == nil {
 		for _, s := range states {
 			if s.DatasetID == datasetID {
-				return s.datasetState, nil
+				return s.DatasetState, nil
 			}
 		}
 		return nil, errStateNotFound
@@ -202,7 +206,7 @@ func (c Client) GetDatasetState(datasetID string) (*datasetState, error) {
 }
 
 /*
-CreateVolume creates a volume in Flocker, waits for it to be ready and
+CreateDataset creates a volume in Flocker, waits for it to be ready and
 returns the dataset id.
 
 This process is a little bit complex but follows this flow:
@@ -212,12 +216,12 @@ This process is a little bit complex but follows this flow:
 3. If it already exists an error is returned
 4. If it didn't previously exist, wait for it to be ready
 */
-func (c Client) CreateVolume(dir string) (path string, err error) {
+func (c Client) CreateDataset(metaName string) (*DatasetState, error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
-	primary, err := c.LookupPrimaryUUID()
+	primary, err := c.GetPrimaryUUID()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// 2) Try to create the dataset in the given Primary
@@ -225,28 +229,28 @@ func (c Client) CreateVolume(dir string) (path string, err error) {
 		Primary:     primary,
 		MaximumSize: json.Number(c.maximumSize),
 		Metadata: metadataPayload{
-			Name: dir,
+			Name: metaName,
 		},
 	}
 
 	resp, err := c.post(c.getURL("configuration/datasets"), payload)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	// 3) Return if the dataset was previously created
 	if resp.StatusCode == http.StatusConflict {
-		return "", errVolumeAlreadyExists
+		return nil, errVolumeAlreadyExists
 	}
 
 	if resp.StatusCode >= 300 {
-		return "", fmt.Errorf("Expected: {1,2}xx creating the volume, got: %d", resp.StatusCode)
+		return nil, fmt.Errorf("Expected: {1,2}xx creating the volume, got: %d", resp.StatusCode)
 	}
 
 	var p configurationPayload
 	if err := json.NewDecoder(resp.Body).Decode(&p); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// 4) Wait until the dataset is ready for usage. In case it never gets
@@ -256,62 +260,50 @@ func (c Client) CreateVolume(dir string) (path string, err error) {
 
 	for {
 		if s, err := c.GetDatasetState(p.DatasetID); err == nil {
-			return s.Path, nil
+			return s, nil
 		} else if err != errStateNotFound {
-			return "", err
+			return nil, err
 		}
 
 		select {
 		case <-timeoutChan:
-			return "", err
+			return nil, err
 		case <-tickChan:
 			break
 		}
 	}
 }
 
-func (c Client) LookupVolume(dir string) (path string, err error) {
-	var s *datasetState
-
-	datasetID, err := c.QueryDatasetIDFromName(dir)
-	if err != nil {
-		return "", err
-	}
-
-	if s, err = c.GetDatasetState(datasetID); err == nil {
-		return s.Path, err
-	}
-
-	switch err {
-	case errStateNotFound:
-		return "", errVolumeDoesNotExist
-	default:
-		return "", err
-	}
-}
-
-func (c Client) UpdateDatasetPrimary(datasetID, newPrimary string) error {
+// UpdatePrimaryForDataset will update the Primary for the given dataset
+// returning the current DatasetState.
+func (c Client) UpdatePrimaryForDataset(newPrimaryUUID, datasetID string) (*DatasetState, error) {
 	payload := struct {
 		Primary string `json:"primary"`
 	}{
-		Primary: newPrimary,
+		Primary: newPrimaryUUID,
 	}
 
 	url := c.getURL(fmt.Sprintf("configuration/datasets/%s", datasetID))
 	resp, err := c.post(url, payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
-		return errUpdatingDataset
+		return nil, errUpdatingDataset
 	}
-	return nil
+
+	var s DatasetState
+	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+		return nil, err
+	}
+
+	return &s, nil
 }
 
-// QueryDatasetIDFromName will return a UUID string for the input value.
-func (c Client) QueryDatasetIDFromName(v string) (datasteID string, err error) {
+// GetDatasetID will return the DatasetID found for the given metadata name.
+func (c Client) GetDatasetID(metaName string) (datasetID string, err error) {
 	resp, err := c.get(c.getURL("configuration/datasets"))
 	if err != nil {
 		return "", err
@@ -321,7 +313,7 @@ func (c Client) QueryDatasetIDFromName(v string) (datasteID string, err error) {
 	var configurations []configurationPayload
 	if err = json.NewDecoder(resp.Body).Decode(&configurations); err == nil {
 		for _, c := range configurations {
-			if c.Metadata.Name == v {
+			if c.Metadata.Name == metaName {
 				return c.DatasetID, nil
 			}
 		}
