@@ -57,6 +57,8 @@ type Client struct {
 	maximumSize json.Number
 }
 
+var _ Clientable = &Client{}
+
 // NewClient creates a wrapper over http.Client to communicate with the flocker control service.
 func NewClient(host string, port int, clientIP string, caCertPath, keyPath, certPath string) (*Client, error) {
 	client, err := newTLSClient(caCertPath, keyPath, certPath)

@@ -288,10 +288,6 @@ func TestUpdatePrimaryForDataset(t *testing.T) {
 	assert.NotEqual("", s.Path)
 }
 
-func TestInterfaceIsImplemented(t *testing.T) {
-	assert.Implements(t, (*Clientable)(nil), Client{})
-}
-
 func newFlockerTestClient(host string, port int) *Client {
 	return &Client{
 		Client:      &http.Client{},
