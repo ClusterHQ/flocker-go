@@ -1,3 +1,11 @@
 machine:
   timezone:
     America/Los_Angeles
+
+# Output the test output to circle.
+test:
+  override:
+    - go test -v ./... > test.out
+  post:
+    - mv test.out $CIRCLE_ARTIFACTS/
+
