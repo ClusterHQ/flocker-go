@@ -121,7 +121,6 @@ func TestFindPrimaryUUID(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	mockedPrimary = expectedPrimary
 	primary, err := c.GetPrimaryUUID()
@@ -161,6 +160,51 @@ func getHostAndPortFromTestServer(ts *httptest.Server) (string, int, error) {
 		return "", 0, nil
 	}
 	return hostSplits[0], port, nil
+}
+
+func TestDeleteDatasetExisting(t *testing.T) {
+	assert := assert.New(t)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal("DELETE", r.Method)
+		assert.Equal("/v1/configuration/datasets/uuid1", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		b, err := json.Marshal(configurationPayload{
+			DatasetID: "uuid1",
+			Primary:   "primary1",
+			Deleted:   true,
+		})
+		assert.NoError(err)
+		w.Write(b)
+	},
+	))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+
+	err = c.DeleteDataset("uuid1")
+	assert.NoError(err)
+}
+
+func TestDeleteDatasetNotExisting(t *testing.T) {
+	assert := assert.New(t)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal("DELETE", r.Method)
+		assert.Equal("/v1/configuration/datasets/uuid2", r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(404)
+		w.Write([]byte(`{"description": "Dataset not found."}`))
+	},
+	))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+
+	err = c.DeleteDataset("uuid2")
+	assert.Error(err)
 }
 
 func TestHappyPathCreateDatasetFromNonExistent(t *testing.T) {
@@ -211,7 +255,6 @@ func TestHappyPathCreateDatasetFromNonExistent(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
@@ -252,7 +295,6 @@ func TestCreateDatasetThatAlreadyExists(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	_, err = c.CreateDataset(&CreateDatasetOptions{
 		Metadata: map[string]string{
@@ -289,7 +331,6 @@ func TestUpdatePrimaryForDataset(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	s, err := c.UpdatePrimaryForDataset(expectedPrimary, expectedDatasetID)
 	assert.NoError(err)

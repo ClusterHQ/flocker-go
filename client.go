@@ -35,6 +35,7 @@ var (
 // Clientable exposes the needed methods to implement your own Flocker Client.
 type Clientable interface {
 	CreateDataset(options *CreateDatasetOptions) (*DatasetState, error)
+	DeleteDataset(datasetID string) error
 
 	GetDatasetState(datasetID string) (*DatasetState, error)
 	GetDatasetID(metaName string) (datasetID string, err error)
@@ -110,6 +111,11 @@ func (c Client) request(method, url string, payload interface{}) (*http.Response
 // post performs a post request with the indicated payload
 func (c Client) post(url string, payload interface{}) (*http.Response, error) {
 	return c.request("POST", url, payload)
+}
+
+// delete performs a delete request with the indicated payload
+func (c Client) delete(url string, payload interface{}) (*http.Response, error) {
+	return c.request("DELETE", url, payload)
 }
 
 // get performs a get request
@@ -191,6 +197,22 @@ func (c Client) GetPrimaryUUID() (uuid string, err error) {
 		return "", errStateNotFound
 	}
 	return "", err
+}
+
+// DeleteDataset performs a delete request to the given datasetID
+func (c *Client) DeleteDataset(datasetID string) error {
+	url := c.getURL(fmt.Sprintf("configuration/datasets/%s", datasetID))
+	resp, err := c.delete(url, nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("Expected: {1,2}xx deleting the dataset %s, got: %d", datasetID, resp.StatusCode)
+	}
+
+	return nil
 }
 
 // GetDatasetState performs a get request to get the state of the given datasetID, if
