@@ -102,6 +102,62 @@ func TestFindIDInConfigurationsPayload(t *testing.T) {
 	assert.Error(err)
 }
 
+func mockGetStateNodes(assert *assert.Assertions, data []byte) *Client {
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal("GET", r.Method)
+		assert.Equal("/v1/state/nodes", r.URL.Path)
+		w.Write(data)
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+
+	return c
+}
+
+func TestListNodes(t *testing.T) {
+	assert := assert.New(t)
+
+	var (
+		mockedHost1    = "127.0.0.1"
+		mockedPrimary1 = "uuid1"
+		mockedHost2    = "127.0.0.2"
+		mockedPrimary2 = "uuid2"
+	)
+
+	c := mockGetStateNodes(
+		assert,
+		[]byte(fmt.Sprintf(
+			`[{"host": "%s", "uuid": "%s"},{"host": "%s", "uuid": "%s"}]`,
+			mockedHost1,
+			mockedPrimary1,
+			mockedHost2,
+			mockedPrimary2,
+		)),
+	)
+
+	nodes, err := c.ListNodes()
+	assert.NoError(err)
+	assert.Equal(2, len(nodes))
+	assert.Equal(mockedHost1, nodes[0].Host)
+	assert.Equal(mockedPrimary1, nodes[0].UUID)
+	assert.Equal(mockedHost2, nodes[1].Host)
+	assert.Equal(mockedPrimary2, nodes[1].UUID)
+
+	c = mockGetStateNodes(
+		assert,
+		[]byte(`[]`),
+	)
+
+	nodes, err = c.ListNodes()
+	assert.NoError(err)
+	assert.Equal(0, len(nodes))
+
+}
+
 func TestFindPrimaryUUID(t *testing.T) {
 	const expectedPrimary = "primary-uuid"
 	assert := assert.New(t)
@@ -111,16 +167,10 @@ func TestFindPrimaryUUID(t *testing.T) {
 		mockedPrimary = expectedPrimary
 	)
 
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal("GET", r.Method)
-		assert.Equal("/v1/state/nodes", r.URL.Path)
-		w.Write([]byte(fmt.Sprintf(`[{"host": "%s", "uuid": "%s"}]`, mockedHost, mockedPrimary)))
-	}))
-
-	host, port, err := getHostAndPortFromTestServer(ts)
-	assert.NoError(err)
-
-	c := newFlockerTestClient(host, port)
+	c := mockGetStateNodes(
+		assert,
+		[]byte(fmt.Sprintf(`[{"host": "%s", "uuid": "%s"}]`, mockedHost, mockedPrimary)),
+	)
 
 	mockedPrimary = expectedPrimary
 	primary, err := c.GetPrimaryUUID()
@@ -129,7 +179,9 @@ func TestFindPrimaryUUID(t *testing.T) {
 
 	c.clientIP = "not.found"
 	_, err = c.GetPrimaryUUID()
-	assert.Equal(errStateNotFound, err)
+	assert.Error(err, "An error was expected")
+	assert.True(strings.Contains(err.Error(), "No node found"), "returns right error")
+	assert.True(strings.Contains(err.Error(), "not.found"), "returns used client IP")
 }
 
 func TestGetURL(t *testing.T) {
