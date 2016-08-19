@@ -121,7 +121,6 @@ func TestFindPrimaryUUID(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	mockedPrimary = expectedPrimary
 	primary, err := c.GetPrimaryUUID()
@@ -256,7 +255,6 @@ func TestHappyPathCreateDatasetFromNonExistent(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
@@ -297,7 +295,6 @@ func TestCreateDatasetThatAlreadyExists(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	_, err = c.CreateDataset(&CreateDatasetOptions{
 		Metadata: map[string]string{
@@ -334,7 +331,6 @@ func TestUpdatePrimaryForDataset(t *testing.T) {
 	assert.NoError(err)
 
 	c := newFlockerTestClient(host, port)
-	assert.NoError(err)
 
 	s, err := c.UpdatePrimaryForDataset(expectedPrimary, expectedDatasetID)
 	assert.NoError(err)
