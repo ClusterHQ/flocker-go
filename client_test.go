@@ -215,7 +215,12 @@ func TestHappyPathCreateDatasetFromNonExistent(t *testing.T) {
 
 	tickerWaitingForVolume = 1 * time.Millisecond // TODO: this is overriding globally
 
-	s, err := c.CreateDataset(expectedDatasetName)
+	s, err := c.CreateDataset(&CreateDatasetOptions{
+		Metadata: map[string]string{
+			"name": expectedDatasetName,
+		},
+	})
+
 	assert.NoError(err)
 	assert.Equal(expectedPath, s.Path)
 }
@@ -249,7 +254,11 @@ func TestCreateDatasetThatAlreadyExists(t *testing.T) {
 	c := newFlockerTestClient(host, port)
 	assert.NoError(err)
 
-	_, err = c.CreateDataset(datasetName)
+	_, err = c.CreateDataset(&CreateDatasetOptions{
+		Metadata: map[string]string{
+			"name": datasetName,
+		},
+	})
 	assert.Equal(errVolumeAlreadyExists, err)
 }
 

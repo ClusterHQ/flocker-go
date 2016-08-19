@@ -34,7 +34,7 @@ var (
 
 // Clientable exposes the needed methods to implement your own Flocker Client.
 type Clientable interface {
-	CreateDataset(metaName string) (*DatasetState, error)
+	CreateDataset(options *CreateDatasetOptions) (*DatasetState, error)
 
 	GetDatasetState(datasetID string) (*DatasetState, error)
 	GetDatasetID(metaName string) (datasetID string, err error)
@@ -130,6 +130,13 @@ type configurationPayload struct {
 	Metadata    metadataPayload `json:"metadata,omitempty"`
 }
 
+type CreateDatasetOptions struct {
+	Primary     string            `json:"primary"`
+	DatasetID   string            `json:"dataset_id,omitempty"`
+	MaximumSize int64             `json:"maximum_size,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
 type metadataPayload struct {
 	Name string `json:"name,omitempty"`
 }
@@ -215,34 +222,30 @@ returns the dataset id.
 This process is a little bit complex but follows this flow:
 
 1. Find the Flocker Control Service UUID
-2. Try to create the dataset
-3. If it already exists an error is returned
-4. If it didn't previously exist, wait for it to be ready
+2. If it already exists an error is returned
+3. If it didn't previously exist, wait for it to be ready
 */
-func (c Client) CreateDataset(metaName string) (*DatasetState, error) {
+func (c *Client) CreateDataset(options *CreateDatasetOptions) (datasetState *DatasetState, err error) {
 	// 1) Find the primary Flocker UUID
 	// Note: it could be cached, but doing this query we health check it
-	primary, err := c.GetPrimaryUUID()
-	if err != nil {
-		return nil, err
+	if options.Primary == "" {
+		options.Primary, err = c.GetPrimaryUUID()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	// 2) Try to create the dataset in the given Primary
-	payload := configurationPayload{
-		Primary:     primary,
-		MaximumSize: json.Number(c.maximumSize),
-		Metadata: metadataPayload{
-			Name: metaName,
-		},
+	if options.MaximumSize == 0 {
+		options.MaximumSize, _ = c.maximumSize.Int64()
 	}
 
-	resp, err := c.post(c.getURL("configuration/datasets"), payload)
+	resp, err := c.post(c.getURL("configuration/datasets"), options)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
-	// 3) Return if the dataset was previously created
+	// 2) Return if the dataset was previously created
 	if resp.StatusCode == http.StatusConflict {
 		return nil, errVolumeAlreadyExists
 	}
@@ -256,7 +259,7 @@ func (c Client) CreateDataset(metaName string) (*DatasetState, error) {
 		return nil, err
 	}
 
-	// 4) Wait until the dataset is ready for usage. In case it never gets
+	// 3) Wait until the dataset is ready for usage. In case it never gets
 	// ready there is a timeoutChan that will return an error
 	timeoutChan := time.NewTimer(timeoutWaitingForVolume).C
 	tickChan := time.NewTicker(tickerWaitingForVolume).C
