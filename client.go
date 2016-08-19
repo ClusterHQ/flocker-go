@@ -41,6 +41,8 @@ type Clientable interface {
 	GetDatasetID(metaName string) (datasetID string, err error)
 	GetPrimaryUUID() (primaryUUID string, err error)
 
+	ListNodes() (nodes []NodeState, err error)
+
 	UpdatePrimaryForDataset(primaryUUID, datasetID string) (*DatasetState, error)
 }
 
@@ -158,7 +160,7 @@ type datasetStatePayload struct {
 	*DatasetState
 }
 
-type nodeStatePayload struct {
+type NodeState struct {
 	UUID string `json:"uuid"`
 	Host string `json:"host"`
 }
@@ -178,25 +180,38 @@ func (c Client) findIDInConfigurationsPayload(body io.ReadCloser, name string) (
 	return "", err
 }
 
+// ListNodes returns a list of dataset agent nodes from Flocker Control Service
+func (c *Client) ListNodes() (nodes []NodeState, err error) {
+	resp, err := c.get(c.getURL("state/nodes"))
+	if err != nil {
+		return []NodeState{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return []NodeState{}, fmt.Errorf("Expected: {1,2}xx listing nodes, got: %d", resp.StatusCode)
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&nodes)
+	if err != nil {
+		return []NodeState{}, err
+	}
+	return nodes, err
+}
+
 // GetPrimaryUUID returns the UUID of the primary Flocker Control Service for
 // the given host.
 func (c Client) GetPrimaryUUID() (uuid string, err error) {
-	resp, err := c.get(c.getURL("state/nodes"))
+	states, err := c.ListNodes()
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 
-	var states []nodeStatePayload
-	if err = json.NewDecoder(resp.Body).Decode(&states); err == nil {
-		for _, s := range states {
-			if s.Host == c.clientIP {
-				return s.UUID, nil
-			}
+	for _, s := range states {
+		if s.Host == c.clientIP {
+			return s.UUID, nil
 		}
-		return "", errStateNotFound
 	}
-	return "", err
+	return "", fmt.Errorf("No node found with IP '%s', available nodes %+v", c.clientIP, states)
 }
 
 // DeleteDataset performs a delete request to the given datasetID
