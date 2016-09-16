@@ -356,6 +356,129 @@ func TestCreateDatasetThatAlreadyExists(t *testing.T) {
 	assert.Equal(errVolumeAlreadyExists, err)
 }
 
+func TestCreateDatasetThatTimesoutServerSide(t *testing.T) {
+	const (
+		datasetName       = "dir"
+		expectedPrimary   = "A-B-C-D"
+		expectedDatasetID = "uuid-1"
+	)
+
+	// reduce timeouts for testing
+	tickerWaitingForVolume = 1 * time.Microsecond
+	timeoutWaitingForVolume = 1 * time.Millisecond
+
+	assert := assert.New(t)
+	var numCalls int
+	var deleted bool
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		numCalls++
+		switch numCalls {
+		case 1:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/state/nodes", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
+		case 2:
+			assert.Equal("POST", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`{"dataset_id": "%s"}`, expectedDatasetID)))
+		default:
+			if r.Method == "GET" {
+				assert.Equal("/v1/state/datasets", r.URL.Path)
+				w.Write([]byte(`[]`))
+			} else if r.Method == "DELETE" {
+				assert.Equal("/v1/configuration/datasets/uuid-1", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				b, err := json.Marshal(configurationPayload{
+					DatasetID: expectedDatasetID,
+					Primary:   expectedPrimary,
+					Deleted:   true,
+				})
+				assert.NoError(err)
+				w.Write(b)
+				deleted = true
+			} else {
+				t.Errorf("Received unexpected call '%s' to '%s'", r.Method, r.URL.Path)
+			}
+		}
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+
+	_, err = c.CreateDataset(&CreateDatasetOptions{
+		Metadata: map[string]string{
+			"name":    datasetName,
+			"primary": expectedPrimary,
+		},
+	})
+
+	assert.True(numCalls > 3, fmt.Sprintf("Not enough retries getting dataset state: %d", numCalls))
+	assert.True(deleted, "Failed dataset was not cleaned up afterwards")
+	assert.Equal("Flocker API timeout during dataset creation (datasetID uuid-1): State not found by Dataset ID", err.Error())
+}
+
+func TestCreateDatasetThatTimesoutServerSideFailedDelete(t *testing.T) {
+	const (
+		datasetName       = "dir"
+		expectedPrimary   = "A-B-C-D"
+		expectedDatasetID = "uuid-1"
+	)
+
+	// reduce timeouts for testing
+	tickerWaitingForVolume = 1 * time.Microsecond
+	timeoutWaitingForVolume = 1 * time.Millisecond
+
+	assert := assert.New(t)
+	var numCalls int
+	var deleted bool
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		numCalls++
+		switch numCalls {
+		case 1:
+			assert.Equal("GET", r.Method)
+			assert.Equal("/v1/state/nodes", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`[{"host": "127.0.0.1", "uuid": "%s"}]`, expectedPrimary)))
+		case 2:
+			assert.Equal("POST", r.Method)
+			assert.Equal("/v1/configuration/datasets", r.URL.Path)
+			w.Write([]byte(fmt.Sprintf(`{"dataset_id": "%s"}`, expectedDatasetID)))
+		default:
+			if r.Method == "GET" {
+				assert.Equal("/v1/state/datasets", r.URL.Path)
+				w.Write([]byte(`[]`))
+			} else if r.Method == "DELETE" {
+				assert.Equal("/v1/configuration/datasets/uuid-1", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(500)
+				w.Write([]byte(`unexpected error`))
+				deleted = true
+			} else {
+				t.Errorf("Received unexpected call '%s' to '%s'", r.Method, r.URL.Path)
+			}
+		}
+	}))
+
+	host, port, err := getHostAndPortFromTestServer(ts)
+	assert.NoError(err)
+
+	c := newFlockerTestClient(host, port)
+
+	_, err = c.CreateDataset(&CreateDatasetOptions{
+		Metadata: map[string]string{
+			"name":    datasetName,
+			"primary": expectedPrimary,
+		},
+	})
+
+	assert.True(numCalls > 3, fmt.Sprintf("Not enough retries getting dataset state: %d", numCalls))
+	assert.True(deleted, "Failed dataset was not cleaned up afterwards")
+	assert.Equal("Flocker API timeout during dataset creation (datasetID uuid-1): State not found by Dataset ID, deletion of dataset failed with Expected: {1,2}xx deleting the dataset uuid-1, got: 500", err.Error())
+}
+
 func TestUpdatePrimaryForDataset(t *testing.T) {
 	const (
 		dir               = "dir"
