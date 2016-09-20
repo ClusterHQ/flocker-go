@@ -302,15 +302,25 @@ func (c *Client) CreateDataset(options *CreateDatasetOptions) (datasetState *Dat
 	tickChan := time.NewTicker(tickerWaitingForVolume).C
 
 	for {
-		if s, err := c.GetDatasetState(p.DatasetID); err == nil {
+		var strErrDel string
+		s, err := c.GetDatasetState(p.DatasetID)
+		if err == nil {
 			return s, nil
 		} else if err != errStateNotFound {
-			return nil, err
+			errDel := c.DeleteDataset(p.DatasetID)
+			if errDel != nil {
+				strErrDel = fmt.Sprintf(", deletion of dataset failed with %s", errDel)
+			}
+			return nil, fmt.Errorf("Flocker API error during dataset creation (datasetID %s): %s%s", p.DatasetID, err, strErrDel)
 		}
 
 		select {
 		case <-timeoutChan:
-			return nil, err
+			errDel := c.DeleteDataset(p.DatasetID)
+			if errDel != nil {
+				strErrDel = fmt.Sprintf(", deletion of dataset failed with %s", errDel)
+			}
+			return nil, fmt.Errorf("Flocker API timeout during dataset creation (datasetID %s): %s%s", p.DatasetID, err, strErrDel)
 		case <-tickChan:
 			break
 		}
