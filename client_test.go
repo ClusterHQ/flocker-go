@@ -19,9 +19,9 @@ import (
 func TestMaximumSizeIs1024Multiple(t *testing.T) {
 	assert := assert.New(t)
 
-	n, err := strconv.Atoi(string(defaultVolumeSize))
+	n, err := strconv.ParseInt(string(defaultVolumeSize), 10, 64)
 	assert.NoError(err)
-	assert.Equal(0, n%1024)
+	assert.Equal(int64(0), n%1024)
 }
 
 func TestPost(t *testing.T) {
